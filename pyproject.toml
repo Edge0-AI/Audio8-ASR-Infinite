@@ -1,0 +1,34 @@
+[project]
+name = "audio8-asr-infinite"
+version = "0.1.0"
+description = "Inference-only package for Audio8 ASR Infinite streaming ASR (torch + vLLM)"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy>=2.1",
+    "torch>=2.13,<2.14",
+    "transformers==5.13.0",
+    "safetensors>=0.8",
+]
+
+[project.optional-dependencies]
+vllm = [
+    "vllm==0.27.1",
+    "pybase64>=1.0",
+]
+client = [
+    "websockets>=13",
+    "soundfile>=0.12",
+    "librosa>=0.11",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["audio8_asr_infinite*"]
+
+[tool.setuptools.package-data]
+"audio8_asr_infinite.vllm_serve" = ["audio8_streaming_asr_vllm_plugin-0.1.dist-info/*"]

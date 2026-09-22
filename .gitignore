@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+vllm_realtime_result.json
+# 部署时按 docker/certs/README.md 自签生成的私钥/证书，不入库
+docker/certs/server.key
+docker/certs/server.crt

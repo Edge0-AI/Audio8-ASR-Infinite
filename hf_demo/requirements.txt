@@ -1,0 +1,11 @@
+# HuggingFace Space 依赖。
+# torch / torchaudio 由 Space 的 GPU 镜像预装（建议 Nvidia L4 / A10G / L40S，24GB 级）。
+transformers==5.13.0
+safetensors>=0.8
+numpy>=2.1
+soundfile>=0.12
+librosa>=0.11
+gradio>=5.0
+
+# 本仓库的推理包，从 GitHub 安装；也可以直接把 audio8_asr_infinite/ 包目录复制进 Space 后删掉此行。
+audio8-asr-infinite @ git+https://github.com/Edge0-AI/Audio8-ASR-Infinite@main

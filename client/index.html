@@ -1,0 +1,2420 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Audio8 ASR Infinite</title>
+    <script src="./config.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7f4;
+        --panel: #ffffff;
+        --ink: #1f2328;
+        --muted: #687076;
+        --line: #d9ded8;
+        --accent: #0f766e;
+        --accent-strong: #0b5f59;
+        --blue: #2563eb;
+        --danger: #b42318;
+        --warn: #9a6700;
+        --shadow: 0 10px 28px rgba(31, 35, 40, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 32px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.1;
+        font-weight: 720;
+        letter-spacing: 0;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 32px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: #8c959f;
+      }
+
+      .status.connected .status-dot {
+        background: var(--accent);
+      }
+
+      .status.recording .status-dot {
+        background: var(--danger);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        gap: 16px;
+      }
+
+      section,
+      aside {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      aside {
+        padding: 16px;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+
+      label {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 620;
+      }
+
+      input {
+        width: 100%;
+        min-height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 10px;
+        color: var(--ink);
+        background: #fbfcfb;
+        font: inherit;
+        font-size: 14px;
+      }
+
+      select {
+        width: 100%;
+        min-height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+        color: var(--ink);
+        background: #fff;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      input:focus,
+      select:focus,
+      button:focus-visible {
+        outline: 2px solid rgba(15, 118, 110, 0.32);
+        outline-offset: 2px;
+      }
+
+      .buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      button {
+        min-height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fbfcfb;
+        color: var(--ink);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button.primary:hover {
+        background: var(--accent-strong);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.48;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        background: #fbfcfb;
+      }
+
+      .metric .value {
+        display: block;
+        min-height: 24px;
+        font-size: 20px;
+        font-weight: 720;
+      }
+
+      .metric .name {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .notice {
+        display: none;
+        margin-top: 14px;
+        border: 1px solid #f0d98c;
+        border-radius: 6px;
+        padding: 10px;
+        color: var(--warn);
+        background: #fff8dc;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .notice.visible {
+        display: block;
+      }
+
+      .transcript-wrap {
+        display: grid;
+        grid-template-rows: auto minmax(220px, 1fr) auto auto;
+        min-height: 560px;
+      }
+
+      .transcript-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 720;
+        letter-spacing: 0;
+      }
+
+      .transcript {
+        padding: 18px;
+        /* The transcript does not grow forever: past the cap it scrolls inside the
+           window (stick-to-bottom and the scroll-listener unpin live in setTranscript). */
+        max-height: min(48vh, 560px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        overscroll-behavior: contain;
+        font-size: 24px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .placeholder {
+        color: var(--muted);
+      }
+
+      .vad-panel {
+        border-top: 1px solid var(--line);
+        padding: 14px 16px 16px;
+        background: #fbfcfb;
+      }
+
+      /* Semantic VAD panel: hidden by default (AUDIO8_SHOW_VAD_PANEL=1 shows it). */
+      .vad-panel[hidden] {
+        display: none;
+      }
+
+      .perf-panel {
+        border-top: 1px solid var(--line);
+        padding: 14px 16px 16px;
+        background: #fbfcfb;
+      }
+
+      .perf-panel[hidden] {
+        display: none;
+      }
+
+      .perf-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .perf-block {
+        min-width: 0;
+      }
+
+      .perf-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+
+      .perf-title {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      .perf-value {
+        font-size: 14px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .perf-chart {
+        display: block;
+        width: 100%;
+        height: 96px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #ffffff;
+      }
+
+      .vad-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .vad-title {
+        font-size: 14px;
+        font-weight: 720;
+      }
+
+      .vad-eot {
+        color: var(--accent-strong);
+        font-size: 13px;
+        font-weight: 720;
+      }
+
+      .silero-row {
+        display: grid;
+        grid-template-columns: 84px minmax(0, 1fr) 56px 48px;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        font-size: 12px;
+      }
+
+      .silero-title {
+        color: var(--muted);
+        font-weight: 620;
+      }
+
+      .silero-meter {
+        position: relative;
+        display: block;
+        height: 8px;
+        border-radius: 999px;
+        background: #e7ebe8;
+      }
+
+      .silero-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 0%;
+        border-radius: 999px;
+        background: #f59e0b;
+        transition: width 80ms linear;
+      }
+
+      .silero-fill.speech {
+        background: #d97706;
+      }
+
+      .silero-threshold-mark {
+        position: absolute;
+        top: -3px;
+        bottom: -3px;
+        width: 2px;
+        margin-left: -1px;
+        background: #b42318;
+        opacity: 0.75;
+      }
+
+      .silero-state {
+        text-align: right;
+        font-weight: 640;
+      }
+
+      .silero-state.speech {
+        color: #b45309;
+      }
+
+      .silero-state.below {
+        color: var(--muted);
+      }
+
+      .silero-value {
+        text-align: right;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .vad-bars {
+        display: grid;
+        gap: 8px;
+      }
+
+      /* Probability grid: hidden by default; display: grid overrides UA [hidden]. */
+      .vad-bars[hidden] {
+        display: none;
+      }
+
+      .vad-row {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) 68px;
+        align-items: start;
+        gap: 8px;
+        min-height: 58px;
+        font-size: 12px;
+      }
+
+      .vad-horizon,
+      .vad-predicted {
+        padding-top: 5px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .vad-horizon {
+        color: var(--muted);
+      }
+
+      .vad-distribution {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(44px, 1fr));
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .vad-class-prob {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 5px 6px;
+        background: #ffffff;
+      }
+
+      .vad-class-prob.active {
+        border-color: rgba(37, 99, 235, 0.38);
+        background: rgba(37, 99, 235, 0.06);
+      }
+
+      .vad-class-label {
+        color: var(--muted);
+        font-weight: 720;
+      }
+
+      .vad-class-meter {
+        height: 6px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e9ece8;
+      }
+
+      .vad-class-fill {
+        display: block;
+        height: 100%;
+        width: 0%;
+        border-radius: inherit;
+        background: var(--accent);
+        transition: width 80ms linear;
+      }
+
+      .vad-class-prob.active .vad-class-fill {
+        background: var(--blue);
+      }
+
+      .vad-class-value {
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .vad-predicted {
+        color: var(--accent-strong);
+        text-align: right;
+        font-weight: 650;
+      }
+
+      .vad-chart {
+        display: block;
+        width: 100%;
+        height: 150px;
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #ffffff;
+      }
+
+      .vad-focus {
+        margin-top: 12px;
+      }
+
+      .vad-controls {
+        display: grid;
+        grid-template-columns: 110px 96px minmax(180px, 1fr);
+        gap: 10px;
+        align-items: end;
+      }
+
+      .vad-control {
+        display: grid;
+        gap: 5px;
+        min-width: 0;
+      }
+
+      .vad-slider-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 44px;
+        align-items: center;
+        gap: 8px;
+      }
+
+      input[type="range"] {
+        min-height: 28px;
+        padding: 0;
+        accent-color: var(--accent);
+      }
+
+      .vad-threshold-value,
+      .vad-focus-value,
+      .vad-energy-value,
+      .vad-focus-state {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .vad-focus-stats {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 28px;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .vad-focus-value {
+        color: var(--ink);
+        font-weight: 720;
+      }
+
+      .vad-energy-value {
+        color: var(--accent-strong);
+        font-weight: 720;
+      }
+
+      .vad-focus-state {
+        color: var(--accent-strong);
+        font-weight: 720;
+      }
+
+      .vad-focus-state.below {
+        color: var(--muted);
+      }
+
+      .mic-level.live {
+        color: #22c55e;
+      }
+      .mic-level.silent {
+        color: #f59e0b;
+      }
+      .hotwords-panel {
+        margin-top: 12px;
+        border: 1px solid var(--line, #2a2f3a);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .hotwords-panel > summary {
+        cursor: pointer;
+        padding: 10px 12px;
+        font-weight: 600;
+        user-select: none;
+      }
+      .hotwords-panel[open] > summary {
+        border-bottom: 1px solid var(--line, #2a2f3a);
+      }
+      .hotwords-body {
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px 12px;
+      }
+      .hotwords-body textarea {
+        width: 100%;
+        min-height: 84px;
+        resize: vertical;
+        padding: 8px;
+        font: inherit;
+        font-size: 13px;
+        color: inherit;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid var(--line, #2a2f3a);
+        border-radius: 8px;
+      }
+      .hotwords-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .hotwords-row input[type="number"] {
+        width: 76px;
+      }
+      .hotwords-hint {
+        opacity: 0.7;
+      }
+      .hotwords-count {
+        opacity: 0.65;
+        font-weight: 400;
+      }
+      .log {
+        height: 132px;
+        overflow: auto;
+        border-top: 1px solid var(--line);
+        background: #fbfcfb;
+        padding: 10px 12px;
+        color: #4f5b62;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 820px) {
+        main {
+          width: min(100vw - 20px, 720px);
+          padding-top: 16px;
+        }
+
+        header,
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+
+        .status {
+          justify-self: start;
+        }
+
+        .transcript-wrap {
+          min-height: 460px;
+        }
+
+        .transcript {
+          font-size: 20px;
+        }
+
+        .perf-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .vad-row {
+          grid-template-columns: 44px minmax(0, 1fr);
+        }
+
+        .vad-distribution {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .vad-predicted {
+          grid-column: 2;
+          padding-top: 0;
+          text-align: left;
+        }
+
+        .vad-controls {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .vad-control.threshold-control {
+          grid-column: 1 / -1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Audio8 ASR Infinite</h1>
+        <div id="status" class="status">
+          <span class="status-dot"></span>
+          <span id="statusText">Disconnected</span>
+        </div>
+      </header>
+
+      <div class="grid">
+        <aside>
+          <div class="field" id="instanceField" hidden>
+            <label for="instanceSelect">Instance</label>
+            <select id="instanceSelect"></select>
+          </div>
+          <div class="field">
+            <label for="wsUrl">WebSocket</label>
+            <input id="wsUrl" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="modelName">Model</label>
+            <input id="modelName" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="language">Language</label>
+            <select id="language"></select>
+          </div>
+          <div class="field">
+            <label for="delayProfile">Delay</label>
+            <select id="delayProfile"></select>
+          </div>
+          <div class="buttons">
+            <button id="connectBtn" class="primary" type="button">Connect</button>
+            <button id="disconnectBtn" type="button" disabled>Disconnect</button>
+            <button id="startBtn" class="primary" type="button" disabled>Start</button>
+            <button id="stopBtn" type="button" disabled>Stop</button>
+            <button id="clearBtn" type="button">Clear</button>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <span id="chunkCount" class="value">0</span>
+              <span class="name">chunks</span>
+            </div>
+            <div class="metric">
+              <span id="elapsed" class="value">0.0s</span>
+              <span class="name">elapsed</span>
+            </div>
+            <div class="metric">
+              <span id="micLevel" class="value mic-level">-</span>
+              <span class="name">mic level</span>
+            </div>
+          </div>
+
+          <div id="secureNotice" class="notice">
+            This page is not a secure context; the browser may refuse microphone access.
+          </div>
+        </aside>
+
+        <section class="transcript-wrap">
+          <div class="transcript-head">
+            <h2>Transcript</h2>
+            <button id="copyBtn" type="button">Copy</button>
+          </div>
+          <div id="transcript" class="transcript">
+            <span class="placeholder">Waiting for audio input</span>
+          </div>
+          <div id="vadPanel" class="vad-panel" hidden>
+            <div class="vad-head">
+              <span class="vad-title">Semantic VAD</span>
+              <span id="vadEot" class="vad-eot">1.0s speech -</span>
+            </div>
+            <div class="silero-row">
+              <span class="silero-title">Silero VAD</span>
+              <span class="silero-meter">
+                <span id="sileroFill" class="silero-fill"></span>
+                <span id="sileroThresholdMark" class="silero-threshold-mark"></span>
+              </span>
+              <span id="sileroState" class="silero-state below">Not loaded</span>
+              <span id="sileroValue" class="silero-value">-</span>
+            </div>
+            <div id="vadBars" class="vad-bars">
+              <span class="placeholder">Waiting for VAD predictions</span>
+            </div>
+            <div class="vad-focus">
+              <div class="vad-controls">
+                <label class="vad-control" for="vadHorizonSelect">
+                  Horizon
+                  <select id="vadHorizonSelect"></select>
+                </label>
+                <label class="vad-control" for="vadClassSelect">
+                  Class
+                  <select id="vadClassSelect"></select>
+                </label>
+                <label class="vad-control threshold-control" for="vadThreshold">
+                  Threshold
+                  <span class="vad-slider-row">
+                    <input id="vadThreshold" type="range" min="0" max="1" step="0.01" value="0.50" />
+                    <span id="vadThresholdValue" class="vad-threshold-value">0.50</span>
+                  </span>
+                </label>
+              </div>
+              <div class="vad-focus-stats">
+                <span id="vadFocusValue" class="vad-focus-value">value -</span>
+                <span id="vadEnergyValue" class="vad-energy-value">energy -</span>
+                <span id="vadFocusState" class="vad-focus-state below">-</span>
+              </div>
+              <svg id="vadChart" class="vad-chart" viewBox="0 0 640 150" preserveAspectRatio="none" aria-label="selected semantic vad history"></svg>
+            </div>
+          </div>
+          <div id="perfPanel" class="perf-panel">
+            <div class="perf-grid">
+              <div class="perf-block">
+                <div class="perf-head">
+                  <span class="perf-title">GPU memory (device / total)</span>
+                  <span id="gpuMemValue" class="perf-value">-</span>
+                </div>
+                <svg
+                  id="gpuMemChart"
+                  class="perf-chart"
+                  viewBox="0 0 640 96"
+                  preserveAspectRatio="none"
+                  aria-label="gpu memory history"
+                ></svg>
+              </div>
+              <div class="perf-block">
+                <div class="perf-head">
+                  <span class="perf-title">RTF (step time / audio duration; &lt;1 is faster than real time)</span>
+                  <span id="rtfValue" class="perf-value">-</span>
+                </div>
+                <svg
+                  id="rtfChart"
+                  class="perf-chart"
+                  viewBox="0 0 640 96"
+                  preserveAspectRatio="none"
+                  aria-label="rtf history"
+                ></svg>
+              </div>
+            </div>
+          </div>
+          <details id="hotwordsPanel" class="hotwords-panel">
+            <summary>Hotwords <span id="hotwordsCount" class="hotwords-count">0</span></summary>
+            <div class="hotwords-body">
+              <label for="hotwordsText">Terms to prefer (one per line, up to 200)</label>
+              <textarea
+                id="hotwordsText"
+                spellcheck="false"
+                placeholder="Audio8&#10;Kubernetes"
+              ></textarea>
+              <div class="hotwords-row">
+                <label for="hotwordBoost">Boost</label>
+                <input id="hotwordBoost" type="number" min="0" max="10" step="0.5" value="1.5" />
+                <span class="hotwords-hint">Applies from the next Start or reconnect; 0 turns biasing off.</span>
+              </div>
+            </div>
+          </details>
+          <div id="log" class="log" hidden></div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const config = window.AUDIO8_CONFIG || {};
+      const targetSampleRate = 16000;
+      const els = {
+        status: document.getElementById("status"),
+        statusText: document.getElementById("statusText"),
+        wsUrl: document.getElementById("wsUrl"),
+        instanceSelect: document.getElementById("instanceSelect"),
+        instanceField: document.getElementById("instanceField"),
+        modelName: document.getElementById("modelName"),
+        language: document.getElementById("language"),
+        delayProfile: document.getElementById("delayProfile"),
+        connectBtn: document.getElementById("connectBtn"),
+        disconnectBtn: document.getElementById("disconnectBtn"),
+        startBtn: document.getElementById("startBtn"),
+        stopBtn: document.getElementById("stopBtn"),
+        clearBtn: document.getElementById("clearBtn"),
+        copyBtn: document.getElementById("copyBtn"),
+        chunkCount: document.getElementById("chunkCount"),
+        micLevel: document.getElementById("micLevel"),
+        elapsed: document.getElementById("elapsed"),
+        transcript: document.getElementById("transcript"),
+        vadEot: document.getElementById("vadEot"),
+        vadPanel: document.getElementById("vadPanel"),
+        vadBars: document.getElementById("vadBars"),
+        vadHorizonSelect: document.getElementById("vadHorizonSelect"),
+        vadClassSelect: document.getElementById("vadClassSelect"),
+        vadThreshold: document.getElementById("vadThreshold"),
+        vadThresholdValue: document.getElementById("vadThresholdValue"),
+        vadFocusValue: document.getElementById("vadFocusValue"),
+        vadEnergyValue: document.getElementById("vadEnergyValue"),
+        vadFocusState: document.getElementById("vadFocusState"),
+        vadChart: document.getElementById("vadChart"),
+        sileroFill: document.getElementById("sileroFill"),
+        sileroState: document.getElementById("sileroState"),
+        sileroValue: document.getElementById("sileroValue"),
+        sileroThresholdMark: document.getElementById("sileroThresholdMark"),
+        hotwordsText: document.getElementById("hotwordsText"),
+        hotwordBoost: document.getElementById("hotwordBoost"),
+        hotwordsCount: document.getElementById("hotwordsCount"),
+        perfPanel: document.getElementById("perfPanel"),
+        gpuMemChart: document.getElementById("gpuMemChart"),
+        gpuMemValue: document.getElementById("gpuMemValue"),
+        rtfChart: document.getElementById("rtfChart"),
+        rtfValue: document.getElementById("rtfValue"),
+        log: document.getElementById("log"),
+        secureNotice: document.getElementById("secureNotice")
+      };
+
+      // --- hotwords (contextual biasing) -------------------------------------
+      const HOTWORDS_STORAGE_KEY = "audio8.hotwords";
+      const HOTWORD_BOOST_KEY = "audio8.hotwordBoost";
+      let hotwordSendTimer = null;
+
+      function parseHotwords(text) {
+        return String(text || "")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .slice(0, 200);
+      }
+
+      function currentHotwords() {
+        return parseHotwords(els.hotwordsText.value);
+      }
+
+      function currentHotwordBoost() {
+        const value = Number(els.hotwordBoost.value);
+        if (!Number.isFinite(value) || value < 0) {
+          return 1.5;
+        }
+        return Math.min(value, 10);
+      }
+
+      function updateHotwordsCount() {
+        els.hotwordsCount.textContent = String(currentHotwords().length);
+      }
+
+      function loadHotwords() {
+        try {
+          const saved = window.localStorage?.getItem(HOTWORDS_STORAGE_KEY);
+          if (saved !== null && saved !== undefined) {
+            els.hotwordsText.value = saved;
+          }
+          const savedBoost = window.localStorage?.getItem(HOTWORD_BOOST_KEY);
+          if (savedBoost) {
+            els.hotwordBoost.value = savedBoost;
+          }
+        } catch (error) {
+          // Private mode / disabled storage: keep the config defaults.
+        }
+        updateHotwordsCount();
+      }
+
+      function saveHotwords() {
+        try {
+          window.localStorage?.setItem(HOTWORDS_STORAGE_KEY, els.hotwordsText.value);
+          window.localStorage?.setItem(HOTWORD_BOOST_KEY, String(currentHotwordBoost()));
+        } catch (error) {
+          // Ignore: the values still apply to this page's sessions.
+        }
+      }
+
+      function sessionUpdatePayload() {
+        return {
+          type: "session.update",
+          model: els.modelName.value.trim() || config.modelName,
+          language: selectedLanguage(),
+          delay_profile: selectedDelayProfile(),
+          hotwords: currentHotwords(),
+          hotword_boost: currentHotwordBoost()
+        };
+      }
+
+      function sendSessionUpdate() {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          sendEvent(sessionUpdatePayload());
+        }
+      }
+
+      // Editing hotwords mid-session re-sends session.update (debounced); the
+      // server rebuilds its sampling parameters for the next generation.
+      function onHotwordsChanged() {
+        updateHotwordsCount();
+        saveHotwords();
+        if (hotwordSendTimer) {
+          window.clearTimeout(hotwordSendTimer);
+        }
+        hotwordSendTimer = window.setTimeout(() => {
+          hotwordSendTimer = null;
+          sendSessionUpdate();
+        }, 400);
+      }
+
+      let socket = null;
+      let mediaStream = null;
+      let audioContext = null;
+      let workletNode = null;
+      let sourceNode = null;
+      let pendingSocket = null;
+      let startedAt = 0;
+      let timer = null;
+      let audioChunkWatchdog = null;
+      let chunkCount = 0;
+      let transcriptText = "";
+      // Transcript stick-to-bottom: follows the newest text by default; scrolling up
+      // unpins it, scrolling back to the bottom re-pins it.
+      let transcriptStickToBottom = true;
+      let vadHistory = [];
+      // Per-step server metrics (RTF / GPU memory): keep a recent slice for the 60s charts.
+      let metricsHistory = [];
+      const metricsWindowMs = 60000;
+      const metricsHistoryLimit = 1200;
+      let lastVadData = null;
+      let audioEnergyHistory = [];
+      let audioStreamStartAtMs = null;
+      let vadStepTimeBaseAtMs = null;
+      // The indicator defaults to c0 at 1.0s; a manual dropdown pick is never overridden.
+      let vadHorizonTouched = false;
+      let vadClassTouched = false;
+      // Probability grid hidden by default (AUDIO8_SHOW_VAD_GRID=1); only the timeline shows.
+      // Master VAD switch (config.vadEnabled): when off, no VAD runs at all -- Silero is
+      // never loaded (no onnxruntime-web / onnx fetch, no inference) and the semantic VAD
+      // panel, charts and event handling stay off. All VAD code below is kept intact and
+      // comes back by setting vadEnabled (AUDIO8_VAD_ENABLED) to "1".
+      const vadEnabled = String(config.vadEnabled ?? "0").trim() === "1";
+      const showVadGrid =
+        vadEnabled && String(config.showVadGrid ?? "0").trim() === "1";
+      // The whole semantic VAD panel is hidden by default (AUDIO8_SHOW_VAD_PANEL=1);
+      // event parsing and rendering code are kept intact.
+      const showVadPanel =
+        vadEnabled && String(config.showVadPanel ?? "0").trim() === "1";
+      // Per-class live values hidden by default (AUDIO8_SHOW_VAD_CLASS_VALUES=1).
+      const showVadClassValues =
+        showVadGrid && String(config.showVadClassValues ?? "0").trim() === "1";
+      const sileroThreshold = clampProbability(
+        Number(config.sileroVadThreshold ?? 0.5)
+      );
+      const sileroModelUrl =
+        config.sileroVadModelUrl || "./vendor/silero_vad.onnx";
+      const ortScriptUrl = config.ortScriptUrl || "./vendor/ort.min.js";
+      const sileroWindowSamples = 512;
+      const sileroContextSamples = 64;
+      const vadIndicatorDefault = parseVadIndicator(
+        config.vadIndicator ?? "1.0:0"
+      );
+      const audioEnergyHistoryLimit = 240;
+      const audioEnergyWindowMs = 24000;
+      const vadFrameMs = 80;
+      const vadHistoryLimit = 512;
+      const delayProfiles = [
+        ...Array.from({ length: 15 }, (_, index) => `${(index + 1) * 80}ms`),
+        "2400ms"
+      ];
+
+      // vLLM backends this page can talk to. The second one exists only when the
+      // deployment sets publicVllmPort2; it is always reached through the same
+      // entry point on an HTTPS page (the TLS proxy routes ?instance=2).
+      function instanceList() {
+        const list = [
+          {
+            label: "Instance 1",
+            port: String(config.publicVllmPort || "").trim(),
+            path: "/v1/realtime"
+          }
+        ];
+        const secondPort = String(config.publicVllmPort2 || "").trim();
+        if (secondPort || window.location.protocol === "https:") {
+          list.push({
+            label: "Instance 2",
+            port: secondPort,
+            path: "/v1/realtime?instance=2"
+          });
+        }
+        return list;
+      }
+
+      function instanceWsUrl(entry) {
+        const pageHost = window.location.hostname || "127.0.0.1";
+        if (window.location.protocol === "https:") {
+          // A secure page cannot open ws://, so every instance goes through the
+          // page's own TLS port and is selected by path/query.
+          const port = window.location.port
+            ? `:${window.location.port}`
+            : (entry.port ? `:${entry.port}` : "");
+          return `wss://${pageHost}${port}${entry.path}`;
+        }
+        // The UI is commonly served on a different local port while SSH
+        // forwards the vLLM socket separately. Keep the forwarded port in the
+        // default instead of accidentally targeting the static-file server.
+        const host = entry.port
+          ? `${pageHost}:${entry.port}`
+          : (window.location.host || "127.0.0.1:18190");
+        return `ws://${host}/v1/realtime`;
+      }
+
+      function defaultWsUrl() {
+        return instanceWsUrl(instanceList()[0]);
+      }
+
+      // Populate the instance picker: switching it just rewrites the WebSocket
+      // field, and it stays hidden when only one instance is configured.
+      function initInstanceSelect() {
+        const list = instanceList();
+        els.instanceSelect.innerHTML = list
+          .map((entry, index) => `<option value="${index}">${entry.label}</option>`)
+          .join("");
+        if (list.length < 2 && els.instanceField) {
+          els.instanceField.hidden = true;
+          return;
+        }
+        if (els.instanceField) {
+          els.instanceField.hidden = false;
+        }
+        els.instanceSelect.addEventListener("change", () => {
+          const entry = list[Number(els.instanceSelect.value)] || list[0];
+          els.wsUrl.value = instanceWsUrl(entry);
+        });
+      }
+
+      function setStatus(text, mode) {
+        els.statusText.textContent = text;
+        els.status.className = `status ${mode || ""}`.trim();
+      }
+
+      // 24h runs: the log panel must not grow forever either (keep the last 200 lines).
+      const LOG_MAX_LINES = 200;
+
+      function log(message) {
+        const time = new Date().toLocaleTimeString();
+        const lines = (els.log.textContent + `[${time}] ${message}\n`).split("\n");
+        els.log.textContent =
+          lines.length > LOG_MAX_LINES
+            ? lines.slice(-LOG_MAX_LINES).join("\n")
+            : lines.join("\n");
+        els.log.scrollTop = els.log.scrollHeight;
+      }
+
+      // Is the transcript still at the bottom? A small slack avoids pixel-level flapping.
+      const TRANSCRIPT_BOTTOM_SLACK_PX = 48;
+
+      function transcriptIsAtBottom() {
+        const el = els.transcript;
+        return (
+          el.scrollHeight - el.scrollTop - el.clientHeight <=
+          TRANSCRIPT_BOTTOM_SLACK_PX
+        );
+      }
+
+      function scrollTranscriptToLatest() {
+        els.transcript.scrollTop = els.transcript.scrollHeight;
+      }
+
+      // 24h transcription: text and DOM cannot grow forever (each delta concatenates and
+      // rewrites the whole textContent, which is O(n^2) and kills the browser). Past the cap
+      // the head is dropped; very old history scrolls out of the window by design.
+      const TRANSCRIPT_MAX_CHARS = 400000;
+
+      function setTranscript(text) {
+        let next = text || "";
+        if (next.length > TRANSCRIPT_MAX_CHARS) {
+          next = `... (earlier transcript scrolled out)\n${next.slice(-TRANSCRIPT_MAX_CHARS)}`;
+        }
+        transcriptText = next;
+        if (!next) {
+          els.transcript.innerHTML =
+            '<span class="placeholder">Waiting for audio input</span>';
+          // Cleared / new session: re-pin to the bottom.
+          transcriptStickToBottom = true;
+          scrollTranscriptToLatest();
+          return;
+        }
+        els.transcript.textContent = next;
+        if (transcriptStickToBottom) {
+          scrollTranscriptToLatest();
+        }
+      }
+
+      function formatGigabytes(bytes) {
+        return `${(Number(bytes || 0) / 1024 ** 3).toFixed(1)} GB`;
+      }
+
+      // Generic mini timeline: x is the last metricsWindowMs of wall clock; y range is given.
+      function renderPerfChart(svg, options) {
+        const width = 640;
+        const height = 96;
+        const left = 48;
+        const right = 10;
+        const top = 10;
+        const plotBottom = height - 22;
+        const plotWidth = width - left - right;
+        const plotHeight = plotBottom - top;
+        const samples = options.samples || [];
+        const now = samples.length ? samples[samples.length - 1].atMs : Date.now();
+        const firstTime = now - metricsWindowMs;
+        const timeSpan = Math.max(1, now - firstTime);
+        const minValue = Number(options.minValue || 0);
+        const maxValue = Number(options.maxValue || 1) || 1;
+        const valueSpan = Math.max(1e-9, maxValue - minValue);
+        const xFor = (atMs) => left + ((atMs - firstTime) / timeSpan) * plotWidth;
+        const yFor = (value) =>
+          plotBottom - ((value - minValue) / valueSpan) * plotHeight;
+        const visible = samples.filter((item) => item.atMs >= firstTime);
+        const points = visible.map(
+          (item) => `${xFor(item.atMs).toFixed(1)},${yFor(item.value).toFixed(1)}`
+        );
+        const linePath = points.length > 1 ? `M ${points.join(" L ")}` : "";
+        const areaPath =
+          points.length > 1
+            ? `M ${xFor(visible[0].atMs).toFixed(1)},${plotBottom} L ${points.join(
+                " L "
+              )} L ${xFor(visible[visible.length - 1].atMs).toFixed(1)},${plotBottom} Z`
+            : "";
+        const last = visible.length ? visible[visible.length - 1] : null;
+        const marker = last
+          ? `<circle cx="${xFor(last.atMs).toFixed(1)}" cy="${yFor(
+              last.value
+            ).toFixed(1)}" r="3" fill="${options.stroke}" />`
+          : "";
+        let reference = "";
+        if (Number.isFinite(options.referenceValue)) {
+          const y = yFor(options.referenceValue).toFixed(1);
+          reference =
+            `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" ` +
+            'stroke="#b9c0bb" stroke-dasharray="4 4" stroke-width="1" />' +
+            (options.referenceLabel
+              ? `<text x="${width - right - 2}" y="${(Number(y) - 3).toFixed(
+                  1
+                )}" text-anchor="end" font-size="9" fill="#687076">${
+                  options.referenceLabel
+                }</text>`
+              : "");
+        }
+        const empty = visible.length
+          ? ""
+          : `<text x="${left + plotWidth / 2}" y="${
+              top + plotHeight / 2
+            }" text-anchor="middle" font-size="11" fill="#687076">Waiting for server metrics...</text>`;
+        svg.innerHTML =
+          `<rect x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" ` +
+          'fill="#fcfdfc" stroke="#e6eae5" />' +
+          (areaPath
+            ? `<path d="${areaPath}" fill="${options.fill}" stroke="none" />`
+            : "") +
+          (linePath
+            ? `<path d="${linePath}" fill="none" stroke="${options.stroke}" stroke-width="1.6" />`
+            : "") +
+          reference +
+          marker +
+          empty +
+          `<text x="${left - 4}" y="${top + 6}" text-anchor="end" font-size="9" fill="#687076">${
+            options.maxLabel ?? ""
+          }</text>` +
+          `<text x="${left - 4}" y="${plotBottom}" text-anchor="end" font-size="9" fill="#687076">${
+            options.minLabel ?? ""
+          }</text>` +
+          `<text x="${left}" y="${height - 6}" font-size="9" fill="#687076">-${(
+            metricsWindowMs / 1000
+          ).toFixed(0)}s</text>` +
+          `<text x="${width - right}" y="${
+            height - 6
+          }" text-anchor="end" font-size="9" fill="#687076">now</text>`;
+      }
+
+      function renderPerfPanels() {
+        const now = Date.now();
+        const samples = metricsHistory.filter(
+          (item) => now - item.atMs <= metricsWindowMs + 1000
+        );
+        const latest = samples.length ? samples[samples.length - 1] : null;
+        if (latest) {
+          const ratio = Number(latest.gpuMemoryTotalBytes)
+            ? Number(latest.gpuMemoryUsedBytes) / Number(latest.gpuMemoryTotalBytes)
+            : 0;
+          els.gpuMemValue.textContent = `${formatGigabytes(
+            latest.gpuMemoryUsedBytes
+          )} / ${formatGigabytes(latest.gpuMemoryTotalBytes)} · ${formatPercent(
+            ratio
+          )}`;
+          const rtf = Number(latest.rtf) || 0;
+          els.rtfValue.textContent = `RTF ${rtf.toFixed(2)}${
+            rtf > 0 ? ` · ${(1 / rtf).toFixed(1)}x realtime` : ""
+          }`;
+        } else {
+          els.gpuMemValue.textContent = "-";
+          els.rtfValue.textContent = "-";
+        }
+        const gpuTotal = latest ? Number(latest.gpuMemoryTotalBytes) || 0 : 0;
+        renderPerfChart(els.gpuMemChart, {
+          samples: samples
+            .filter((item) => Number(item.gpuMemoryTotalBytes) > 0)
+            .map((item) => ({
+              atMs: item.atMs,
+              value: Number(item.gpuMemoryUsedBytes) || 0
+            })),
+          minValue: 0,
+          maxValue: gpuTotal || 1,
+          stroke: "#2563eb",
+          fill: "rgba(37, 99, 235, 0.12)",
+          minLabel: "0",
+          maxLabel: gpuTotal ? formatGigabytes(gpuTotal) : ""
+        });
+        const rtfMax = samples.reduce(
+          (peak, item) => Math.max(peak, Number(item.rtf) || 0),
+          0
+        );
+        // Upper bound: a multiple of 0.5, at least 1.0, so "Realtime 1.0" stays visible.
+        const rtfTop = Math.max(1, Math.ceil(Math.max(rtfMax, 1) * 2) / 2);
+        renderPerfChart(els.rtfChart, {
+          samples: samples.map((item) => ({
+            atMs: item.atMs,
+            value: Math.max(0, Number(item.rtf) || 0)
+          })),
+          minValue: 0,
+          maxValue: rtfTop,
+          stroke: "#0f766e",
+          fill: "rgba(15, 118, 110, 0.12)",
+          minLabel: "0",
+          maxLabel: rtfTop.toFixed(1),
+          referenceValue: 1,
+          referenceLabel: "Realtime 1.0"
+        });
+      }
+
+      function handleMetrics(data) {
+        metricsHistory.push({
+          atMs: Date.now(),
+          gpuMemoryUsedBytes: Number(data.gpu_memory_used_bytes || 0),
+          gpuMemoryTotalBytes: Number(data.gpu_memory_total_bytes || 0),
+          rtf: Number(data.rtf || 0),
+          rtfEma: Number(data.rtf_ema || 0),
+          stepMs: Number(data.step_ms || 0),
+          audioMs: Number(data.audio_ms || 0)
+        });
+        if (metricsHistory.length > metricsHistoryLimit) {
+          metricsHistory = metricsHistory.slice(-metricsHistoryLimit);
+        }
+        renderPerfPanels();
+      }
+
+      function resetPerfPanels() {
+        metricsHistory = [];
+        renderPerfPanels();
+      }
+
+      function formatPercent(value) {
+        const percent = Math.max(0, Math.min(100, Number(value || 0) * 100));
+        const digits = percent > 0 && percent < 10 ? 1 : 0;
+        return `${percent.toFixed(digits)}%`;
+      }
+
+      function formatProbability(value) {
+        const probability = Math.max(0, Math.min(1, Number(value || 0)));
+        return probability.toFixed(3);
+      }
+
+      function findHorizonIndex(horizons, selectedHorizon) {
+        const target = Number(selectedHorizon);
+        if (!Number.isFinite(target)) {
+          return 0;
+        }
+        const index = Array.from(horizons || []).findIndex(
+          (horizon) => Math.abs(Number(horizon) - target) < 0.0001
+        );
+        return index >= 0 ? index : 0;
+      }
+
+      function clampProbability(value) {
+        const probability = Number(value);
+        if (!Number.isFinite(probability)) {
+          return 0;
+        }
+        return Math.max(0, Math.min(1, probability));
+      }
+
+      function parseVadIndicator(value) {
+        const [horizonText, classText] = String(value ?? "").split(":");
+        const horizon = Number(horizonText);
+        const className = Number(classText);
+        return {
+          horizon: Number.isFinite(horizon) ? horizon : 1.0,
+          className:
+            Number.isInteger(className) && className >= 0 ? className : 0
+        };
+      }
+
+      function formatElapsedLabel(milliseconds) {
+        const seconds = Math.max(0, Number(milliseconds || 0) / 1000);
+        if (seconds < 10) {
+          return `${seconds.toFixed(1)}s`;
+        }
+        return `${Math.round(seconds)}s`;
+      }
+
+      function computePcmEnergy(buffer) {
+        const samples = new Int16Array(buffer);
+        if (!samples.length) {
+          return 0;
+        }
+        let sumSquares = 0;
+        for (const sample of samples) {
+          const normalized = sample / 32768;
+          sumSquares += normalized * normalized;
+        }
+        return Math.min(1, Math.sqrt(sumSquares / samples.length) * 5);
+      }
+
+      function recordAudioEnergy(buffer) {
+        const sentAtMs = Date.now();
+        if (!Number.isFinite(audioStreamStartAtMs)) {
+          audioStreamStartAtMs = sentAtMs;
+        }
+        const energy = computePcmEnergy(buffer);
+        audioEnergyHistory.push({
+          sentAtMs,
+          energy
+        });
+        audioEnergyHistory = audioEnergyHistory.slice(-audioEnergyHistoryLimit);
+        renderVadFocusChart();
+        return energy;
+      }
+
+      // Always-visible microphone level.  With the VAD panel hidden there was no
+      // way to tell "the model went quiet" apart from "the microphone went
+      // quiet", which is the difference between a model bug and a muted input.
+      const MIC_SILENT_LEVEL = 0.005; // computePcmEnergy scale (rms * 5)
+      let micSilentSinceMs = 0;
+      let micSilentWarned = false;
+
+      function noteMicLevel(level) {
+        const percent = Math.min(99.9, level * 100).toFixed(1);
+        const silent = level <= MIC_SILENT_LEVEL;
+        els.micLevel.textContent = silent ? `${percent}% silent` : `${percent}%`;
+        els.micLevel.className = silent ? "value mic-level silent" : "value mic-level live";
+        if (!silent) {
+          micSilentSinceMs = 0;
+          micSilentWarned = false;
+          return;
+        }
+        const now = Date.now();
+        if (!micSilentSinceMs) {
+          micSilentSinceMs = now;
+          return;
+        }
+        if (!micSilentWarned && now - micSilentSinceMs > 5000) {
+          micSilentWarned = true;
+          log("Microphone level is near zero: check the input device or mute. The model cannot transcribe silence.");
+        }
+      }
+
+      // --- Silero VAD (comparison only, onnxruntime-web inside the browser) ----------
+      // Reuses the same 16k PCM stream sent to the server: one inference per 512 samples
+      // (32ms), prefixed with 64 context samples (576 total), state shape [2,1,128], as in
+      // the official v5 reference; sigmoid is built in, so the output is 0..1 at threshold 0.5.
+      const silero = {
+        loading: null,
+        session: null,
+        unavailable: false,
+        state: new Float32Array(2 * 128),
+        context: new Float32Array(sileroContextSamples),
+        carry: new Float32Array(0),
+        queue: Promise.resolve(),
+        probability: null,
+        history: [],
+        streamStartMs: null,
+        pushedSamples: 0
+      };
+
+      function loadScript(url) {
+        return new Promise((resolve, reject) => {
+          const selector = `script[data-audio8-vendor="${url}"]`;
+          const existing = document.querySelector(selector);
+          if (existing) {
+            if (existing.dataset.loaded === "1") {
+              resolve();
+              return;
+            }
+            existing.addEventListener("load", () => resolve());
+            existing.addEventListener("error", () =>
+              reject(new Error(`failed to load ${url}`))
+            );
+            return;
+          }
+          const script = document.createElement("script");
+          script.src = url;
+          script.dataset.audio8Vendor = url;
+          script.addEventListener("load", () => {
+            script.dataset.loaded = "1";
+            resolve();
+          });
+          script.addEventListener("error", () =>
+            reject(new Error(`failed to load ${url}`))
+          );
+          document.head.appendChild(script);
+        });
+      }
+
+      function sileroStatusText() {
+        if (silero.unavailable) {
+          return "Unavailable";
+        }
+        if (silero.session) {
+          return "Waiting for audio";
+        }
+        return silero.loading ? "Loading" : "Not loaded";
+      }
+
+      function renderSilero(probability) {
+        if (!vadEnabled) {
+          return;
+        }
+        const value = Number.isFinite(Number(probability))
+          ? clampProbability(probability)
+          : null;
+        silero.probability = value;
+        if (value === null) {
+          els.sileroFill.style.width = "0%";
+          els.sileroFill.className = "silero-fill";
+          els.sileroValue.textContent = "-";
+          els.sileroState.textContent = sileroStatusText();
+          els.sileroState.className = "silero-state below";
+          return;
+        }
+        const speech = value >= sileroThreshold;
+        els.sileroFill.style.width = `${(value * 100).toFixed(1)}%`;
+        els.sileroFill.className = `silero-fill${speech ? " speech" : ""}`;
+        els.sileroValue.textContent = formatProbability(value);
+        els.sileroState.textContent = speech ? "Speech" : "Silence";
+        els.sileroState.className = `silero-state ${speech ? "speech" : "below"}`;
+      }
+
+      function resetSilero() {
+        silero.state = new Float32Array(2 * 128);
+        silero.context = new Float32Array(sileroContextSamples);
+        silero.carry = new Float32Array(0);
+        silero.history = [];
+        silero.streamStartMs = null;
+        silero.pushedSamples = 0;
+        renderSilero(null);
+      }
+
+      function ensureSilero() {
+        if (!vadEnabled) {
+          // VAD is switched off: never pull onnxruntime-web or the onnx model.
+          return Promise.resolve(null);
+        }
+        if (silero.session || silero.unavailable) {
+          return Promise.resolve(silero.session);
+        }
+        if (silero.loading) {
+          return silero.loading;
+        }
+        silero.loading = (async () => {
+          await loadScript(ortScriptUrl);
+          const ort = window.ort;
+          if (!ort) {
+            throw new Error("onnxruntime-web is not ready");
+          }
+          // The static server has no COOP/COEP; single-thread avoids SharedArrayBuffer.
+          ort.env.wasm.numThreads = 1;
+          ort.env.wasm.wasmPaths = new URL(
+            "./vendor/",
+            window.location.href
+          ).href;
+          silero.session = await ort.InferenceSession.create(sileroModelUrl);
+          log(`Silero VAD loaded (threshold ${sileroThreshold.toFixed(2)})`);
+          renderSilero(null);
+          return silero.session;
+        })().catch((error) => {
+          silero.unavailable = true;
+          renderSilero(null);
+          log(`Silero VAD failed to load: ${error.message}`);
+          return null;
+        });
+        // silero.loading is already set, so the label reads "Loading".
+        renderSilero(null);
+        return silero.loading;
+      }
+
+      async function runSileroWindow(chunk, windowStartSample) {
+        const ort = window.ort;
+        if (!ort || !silero.session) {
+          return;
+        }
+        const input = new Float32Array(sileroWindowSamples + sileroContextSamples);
+        input.set(silero.context, 0);
+        input.set(chunk, sileroContextSamples);
+        const outputs = await silero.session.run({
+          input: new ort.Tensor("float32", input, [1, input.length]),
+          state: new ort.Tensor("float32", silero.state, [2, 1, 128]),
+          sr: new ort.Tensor("int64", BigInt64Array.from([16000n]), [])
+        });
+        // Silero v5 output names are fixed (output / stateN); fetch by name, not order.
+        const probabilityTensor =
+          outputs.output || outputs[silero.session.outputNames[0]];
+        const stateTensor =
+          outputs.stateN || outputs[silero.session.outputNames[1]];
+        silero.state = Float32Array.from(stateTensor.data);
+        silero.context = chunk.slice(-sileroContextSamples);
+        const probability = clampProbability(
+          Number(probabilityTensor.data[0])
+        );
+        renderSilero(probability);
+        if (silero.streamStartMs !== null) {
+          silero.history.push({
+            timeMs:
+              silero.streamStartMs + (windowStartSample / targetSampleRate) * 1000,
+            probability
+          });
+          silero.history = silero.history.slice(-600);
+        }
+      }
+
+      function pushSileroAudio(buffer) {
+        if (!vadEnabled || silero.unavailable) {
+          return;
+        }
+        if (!silero.session) {
+          ensureSilero();
+          return;
+        }
+        if (silero.streamStartMs === null) {
+          silero.streamStartMs = Date.now();
+        }
+        const samples = new Int16Array(buffer);
+        const carryLength = silero.carry.length;
+        // merged covers [pushedSamples - carryLength, pushedSamples + samples) of the stream
+        const firstSampleIndex = silero.pushedSamples - carryLength;
+        const merged = new Float32Array(carryLength + samples.length);
+        merged.set(silero.carry, 0);
+        for (let i = 0; i < samples.length; i += 1) {
+          merged[carryLength + i] = samples[i] / 32768;
+        }
+        let offset = 0;
+        while (merged.length - offset >= sileroWindowSamples) {
+          const chunk = merged.slice(offset, offset + sileroWindowSamples);
+          const windowStartSample = firstSampleIndex + offset;
+          silero.queue = silero.queue
+            .then(() => runSileroWindow(chunk, windowStartSample))
+            .catch(() => {});
+          offset += sileroWindowSamples;
+        }
+        silero.carry = merged.slice(offset);
+        silero.pushedSamples += samples.length;
+      }
+
+      function renderClassProbability(value, classIndex, predictedClass) {
+        const probability = clampProbability(value);
+        const active = Number(predictedClass) === classIndex ? " active" : "";
+        return `
+          <span class="vad-class-prob${active}" title="c${classIndex}${classIndex === 0 ? "：no speech within this horizon (EOT); the panel shows 1-c0, i.e. speech probability" : ""}">
+            <span class="vad-class-label">c${classIndex}</span>
+            <span class="vad-class-meter">
+              <span class="vad-class-fill" style="width: ${probability * 100}%"></span>
+            </span>
+            ${
+              showVadClassValues
+                ? `<span class="vad-class-value">${formatPercent(probability)}</span>`
+                : ""
+            }
+          </span>
+        `;
+      }
+
+      // Class 0 (c0) is the probability of no speech within the horizon (EOT), while Silero
+      // reports speech probability; they are inverted. We unify on 1 = speech, 0 = silence: display 1 - P(c0).
+      // The indicator defaults to c0 at 1.0s (config.vadIndicator = "1.0:0"); the server-side
+      // selected_eot_* values (also EOT probabilities) are only a fallback.
+      function semanticSpeechProbability(rawProbability) {
+        return clampProbability(1 - clampProbability(rawProbability));
+      }
+
+      function vadIndicatorLabel(indicator) {
+        const prefix = `${indicator.horizonSeconds.toFixed(1)}s`;
+        // c0 means "no speech", so its inverse is simply "speech"; other classes show 1-cK.
+        const name = indicator.className === 0 ? "speech" : `1-c${indicator.className}`;
+        const value =
+          indicator.value === null ? "-" : formatPercent(indicator.value);
+        return `${prefix} ${name} ${value}`;
+      }
+
+      function selectedVadIndicator(data) {
+        const horizons = data?.horizons_seconds || [];
+        const probabilities = data?.probabilities || [];
+        const horizonText = els.vadHorizonSelect.value;
+        const classText = els.vadClassSelect.value;
+        const horizonValue = String(horizonText ?? "").trim() === "" ? Number.NaN : Number(horizonText);
+        const classValue = String(classText ?? "").trim() === "" ? Number.NaN : Number(classText);
+        const horizonSeconds = Number.isFinite(horizonValue)
+          ? horizonValue
+          : vadIndicatorDefault.horizon;
+        const className = Number.isFinite(classValue)
+          ? classValue
+          : vadIndicatorDefault.className;
+        const horizonIndex = findHorizonIndex(horizons, horizonSeconds);
+        const raw = Number(probabilities?.[horizonIndex]?.[className]);
+        const hasRaw = Number.isFinite(raw);
+        return {
+          horizonSeconds: Number(horizons[horizonIndex] ?? horizonSeconds),
+          className,
+          rawProbability: hasRaw ? clampProbability(raw) : null,
+          // 1 = speech, 0 = silence (same direction as Silero)
+          value: hasRaw
+            ? semanticSpeechProbability(raw)
+            : semanticSpeechProbability(data?.selected_eot_probability ?? 0)
+        };
+      }
+
+      function renderVad(data) {
+        if (!vadEnabled) {
+          return;
+        }
+        const horizons = data.horizons_seconds || [];
+        const probabilities = data.probabilities || [];
+        const predicted = data.predicted_classes || [];
+        lastVadData = data;
+        // Build the dropdown options from this frame first (default 1.0s / c0), then compute the
+        // indicator, so the first frame does not fall back to 0.5s.
+        updateVadControlOptions(horizons, probabilities);
+        const indicator = selectedVadIndicator(data);
+
+        els.vadEot.textContent = vadIndicatorLabel(indicator);
+        if (showVadGrid) {
+          els.vadBars.innerHTML = "";
+          probabilities.forEach((classProbabilities, index) => {
+            const predictedClass = predicted[index];
+            const row = document.createElement("div");
+            row.className = "vad-row";
+            const distribution = Array.from(classProbabilities || [])
+              .map((value, classIndex) =>
+                renderClassProbability(value, classIndex, predictedClass)
+              )
+              .join("");
+            row.innerHTML = `
+              <span class="vad-horizon">${Number(horizons[index] || 0).toFixed(1)}s</span>
+              <span class="vad-distribution">${distribution}</span>
+              <span class="vad-predicted">pred c${predictedClass ?? "-"}</span>
+            `;
+            els.vadBars.appendChild(row);
+          });
+        }
+
+        vadHistory.push({
+          stepIndex: Number(data.step_index ?? vadHistory.length),
+          timeBaseMs: Number.isFinite(vadStepTimeBaseAtMs)
+            ? vadStepTimeBaseAtMs
+            : audioStreamStartAtMs,
+          horizons,
+          probabilities,
+          receivedAtMs: Date.now()
+        });
+        vadHistory = vadHistory.slice(-vadHistoryLimit);
+        renderVadFocusChart();
+      }
+
+      function updateVadControlOptions(horizons, probabilities) {
+        const horizonCount = horizons.length;
+        if (els.vadHorizonSelect.options.length !== horizonCount) {
+          els.vadHorizonSelect.innerHTML = horizons
+            .map(
+              (horizon) =>
+                `<option value="${Number(horizon)}">${Number(horizon).toFixed(1)}s</option>`
+            )
+            .join("");
+        }
+        // Default indicator horizon 1.0s; a manual pick is always kept.
+        const desiredHorizon = String(
+          vadHorizonTouched
+            ? els.vadHorizonSelect.value
+            : vadIndicatorDefault.horizon
+        );
+        const horizonOptions = Array.from(els.vadHorizonSelect.options);
+        if (horizonOptions.some((option) => option.value === desiredHorizon)) {
+          els.vadHorizonSelect.value = desiredHorizon;
+        } else if (horizonOptions.length) {
+          els.vadHorizonSelect.value = horizonOptions[0].value;
+        }
+
+        const classCount = Math.max(
+          0,
+          ...probabilities.map((classProbabilities) =>
+            Array.isArray(classProbabilities) ? classProbabilities.length : 0
+          )
+        );
+        if (els.vadClassSelect.options.length !== classCount) {
+          els.vadClassSelect.innerHTML = Array.from(
+            { length: classCount },
+            (_, index) =>
+              `<option value="${index}">${index === 0 ? "c0·EOT" : `c${index}`}</option>`
+          ).join("");
+        }
+        // Default indicator class c0; a manual pick is always kept.
+        const desiredClass = String(
+          vadClassTouched
+            ? els.vadClassSelect.value
+            : vadIndicatorDefault.className
+        );
+        const classOptions = Array.from(els.vadClassSelect.options);
+        if (classOptions.some((option) => option.value === desiredClass)) {
+          els.vadClassSelect.value = desiredClass;
+        } else if (classOptions.length) {
+          els.vadClassSelect.value = classOptions[0].value;
+        }
+      }
+
+      // Switching horizon/class updates the indicator immediately (no waiting for the next VAD frame).
+      function refreshVadIndicatorLabel() {
+        if (!lastVadData) {
+          els.vadEot.textContent = `${vadIndicatorDefault.horizon.toFixed(1)}s ${
+            vadIndicatorDefault.className === 0
+              ? "speech"
+              : `1-c${vadIndicatorDefault.className}`
+          } -`;
+          return;
+        }
+        els.vadEot.textContent = vadIndicatorLabel(selectedVadIndicator(lastVadData));
+      }
+
+      function renderVadFocusChart() {
+        const threshold = Number(els.vadThreshold.value || 0);
+        els.vadThresholdValue.textContent = threshold.toFixed(2);
+        const selectedHorizon = els.vadHorizonSelect.value;
+        const classIndex = Number(els.vadClassSelect.value || 0);
+        const samples = vadHistory
+          .map((item, index) => {
+            const horizonIndex = findHorizonIndex(
+              item.horizons,
+              selectedHorizon
+            );
+            const values = item.probabilities?.[horizonIndex] || [];
+            const value = Number(values[classIndex]);
+            return {
+              index,
+              stepIndex: Number.isFinite(item.stepIndex)
+                ? item.stepIndex
+                : index,
+              timeBaseMs: item.timeBaseMs,
+              receivedAtMs: Number.isFinite(item.receivedAtMs)
+                ? item.receivedAtMs
+                : index,
+              // Matches the indicator: 1 = speech, 0 = silence (c0 is EOT, hence inverted)
+              value: Number.isFinite(value)
+                ? semanticSpeechProbability(value)
+                : null
+            };
+          })
+          .filter((item) => item.value !== null);
+
+        const latestEnergy = audioEnergyHistory.at(-1)?.energy;
+        els.vadEnergyValue.textContent = Number.isFinite(latestEnergy)
+          ? `energy ${formatProbability(latestEnergy)}`
+          : "energy -";
+
+        if (!samples.length) {
+          els.vadFocusValue.textContent = "speech -";
+          els.vadFocusState.textContent = "-";
+          els.vadFocusState.className = "vad-focus-state below";
+          const now = Date.now();
+          els.vadChart.innerHTML = renderEmptyVadChart({
+            firstTime: now - audioEnergyWindowMs,
+            lastTime: now,
+            audioEnergy: audioEnergyHistory
+          });
+          return;
+        }
+
+        const width = 640;
+        const height = 150;
+        const left = 42;
+        const right = 12;
+        const top = 12;
+        const bottom = 116;
+        const chartWidth = width - left - right;
+        const chartHeight = bottom - top;
+        const firstAudioTime = audioEnergyHistory.length
+          ? audioEnergyHistory[0].sentAtMs
+          : null;
+        const lastAudioTime = audioEnergyHistory.length
+          ? audioEnergyHistory[audioEnergyHistory.length - 1].sentAtMs
+          : null;
+        const timelineSamples = samples.map((sample) => ({
+          ...sample,
+          timelineAtMs:
+            Number.isFinite(sample.timeBaseMs) && Number.isFinite(sample.stepIndex)
+              ? sample.timeBaseMs + sample.stepIndex * vadFrameMs
+              : sample.receivedAtMs
+        }));
+        const firstVadTime = timelineSamples[0].timelineAtMs;
+        const lastVadTime = timelineSamples[timelineSamples.length - 1].timelineAtMs;
+        const lastTime = Math.max(
+          lastVadTime,
+          lastAudioTime ?? lastVadTime
+        );
+        const firstTime = Math.max(
+          Math.min(firstVadTime, firstAudioTime ?? firstVadTime),
+          lastTime - audioEnergyWindowMs
+        );
+        const visibleVadSamples = timelineSamples.filter(
+          (sample) => sample.timelineAtMs >= firstTime && sample.timelineAtMs <= lastTime
+        );
+        const timeSpan = Math.max(1, lastTime - firstTime);
+        const xForTime = (timeMs) =>
+          left + ((timeMs - firstTime) / timeSpan) * chartWidth;
+        const xFor = (sample) => xForTime(sample.timelineAtMs);
+        const yFor = (value) => bottom - value * chartHeight;
+        const visibleEnergy = audioEnergyHistory.filter(
+          (item) => item.sentAtMs >= firstTime && item.sentAtMs <= lastTime
+        );
+        const energyPoints = visibleEnergy
+          .map((item) => `${xForTime(item.sentAtMs).toFixed(1)},${yFor(item.energy).toFixed(1)}`)
+          .join(" ");
+        const energyArea = energyPoints
+          ? `M ${xForTime(visibleEnergy[0].sentAtMs).toFixed(1)} ${bottom} L ${energyPoints} L ${xForTime(visibleEnergy[visibleEnergy.length - 1].sentAtMs).toFixed(1)} ${bottom} Z`
+          : "";
+        const lineSamples =
+          visibleVadSamples.length === 1
+            ? [
+                { x: left, y: yFor(visibleVadSamples[0].value) },
+                { x: width - right, y: yFor(visibleVadSamples[0].value) }
+              ]
+            : visibleVadSamples.map((sample) => ({
+                x: xFor(sample),
+                y: yFor(sample.value)
+              }));
+        const vadPoints = lineSamples
+          .map((sample) => `${sample.x.toFixed(1)},${sample.y.toFixed(1)}`)
+          .join(" ");
+        const vadArea = vadPoints
+          ? `M ${lineSamples[0].x.toFixed(1)} ${bottom} L ${vadPoints} L ${lineSamples[lineSamples.length - 1].x.toFixed(1)} ${bottom} Z`
+          : "";
+        const thresholdY = yFor(threshold).toFixed(1);
+        const sileroThresholdY = yFor(sileroThreshold).toFixed(1);
+        const sileroPoints = silero.history
+          .filter(
+            (item) => item.timeMs >= firstTime && item.timeMs <= lastTime
+          )
+          .map(
+            (item) =>
+              `${xForTime(item.timeMs).toFixed(1)},${yFor(item.probability).toFixed(1)}`
+          )
+          .join(" ");
+        const firstLabel = samples.length <= 1 ? "now" : `-${formatElapsedLabel(lastTime - firstTime)}`;
+        const latest = samples[samples.length - 1].value;
+        const above = latest >= threshold;
+
+        els.vadFocusValue.textContent = `speech ${formatProbability(latest)}`;
+        els.vadFocusState.textContent = above ? "Speech" : "Silence";
+        els.vadFocusState.className = `vad-focus-state${above ? "" : " below"}`;
+        els.vadChart.innerHTML = `
+          <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" stroke="#b7c0b8" stroke-width="1" />
+          <line x1="${left}" y1="${bottom}" x2="${width - right}" y2="${bottom}" stroke="#b7c0b8" stroke-width="1" />
+          <line x1="${left}" y1="${thresholdY}" x2="${width - right}" y2="${thresholdY}" stroke="#b42318" stroke-width="1.5" stroke-dasharray="5 5" />
+          <text x="8" y="${top + 4}" fill="#687076" font-size="11">1.0</text>
+          <text x="8" y="${yFor(0.5) + 4}" fill="#687076" font-size="11">0.5</text>
+          <text x="14" y="${bottom + 4}" fill="#687076" font-size="11">0</text>
+          <text x="${left}" y="140" fill="#687076" font-size="11">${firstLabel}</text>
+          <text x="${width - right - 24}" y="140" fill="#687076" font-size="11">now</text>
+          <text x="${width / 2 - 12}" y="140" fill="#687076" font-size="11">time</text>
+          <text x="5" y="${height / 2}" fill="#687076" font-size="11" transform="rotate(-90 5 ${height / 2})">speech prob.</text>
+          <text x="${width - right - 214}" y="${top + 10}" fill="#0f766e" font-size="11">energy</text>
+          <text x="${width - right - 152}" y="${top + 10}" fill="#2563eb" font-size="11">semantic</text>
+          <text x="${width - right - 82}" y="${top + 10}" fill="#f59e0b" font-size="11">silero</text>
+          ${energyArea ? `<path d="${energyArea}" fill="rgba(15, 118, 110, 0.12)" />` : ""}
+          ${energyPoints ? `<polyline points="${energyPoints}" fill="none" stroke="#0f766e" stroke-width="1.7" vector-effect="non-scaling-stroke" />` : ""}
+          ${vadArea ? `<path d="${vadArea}" fill="rgba(37, 99, 235, 0.10)" />` : ""}
+          ${vadPoints ? `<polyline points="${vadPoints}" fill="none" stroke="#2563eb" stroke-width="2.2" vector-effect="non-scaling-stroke" />` : ""}
+          <line x1="${left}" y1="${sileroThresholdY}" x2="${width - right}" y2="${sileroThresholdY}" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3 4" opacity="0.85" />
+          ${sileroPoints ? `<polyline points="${sileroPoints}" fill="none" stroke="#f59e0b" stroke-width="1.8" vector-effect="non-scaling-stroke" />` : ""}
+        `;
+      }
+
+      function renderEmptyVadChart(options = {}) {
+        const width = 640;
+        const left = 42;
+        const right = 12;
+        const bottom = 116;
+        const chartWidth = width - left - right;
+        const firstTime = Number(options.firstTime || 0);
+        const lastTime = Number(options.lastTime || 0);
+        const timeSpan = Math.max(1, lastTime - firstTime);
+        const yFor = (value) => bottom - value * 104;
+        const xForTime = (timeMs) =>
+          left + ((timeMs - firstTime) / timeSpan) * chartWidth;
+        const visibleEnergy = Array.from(options.audioEnergy || []).filter(
+          (item) => item.sentAtMs >= firstTime && item.sentAtMs <= lastTime
+        );
+        const energyPoints = visibleEnergy
+          .map((item) => `${xForTime(item.sentAtMs).toFixed(1)},${yFor(item.energy).toFixed(1)}`)
+          .join(" ");
+        const energyArea = energyPoints
+          ? `M ${xForTime(visibleEnergy[0].sentAtMs).toFixed(1)} ${bottom} L ${energyPoints} L ${xForTime(visibleEnergy[visibleEnergy.length - 1].sentAtMs).toFixed(1)} ${bottom} Z`
+          : "";
+        const sileroPoints = silero.history
+          .filter(
+            (item) => item.timeMs >= firstTime && item.timeMs <= lastTime
+          )
+          .map(
+            (item) =>
+              `${xForTime(item.timeMs).toFixed(1)},${yFor(item.probability).toFixed(1)}`
+          )
+          .join(" ");
+        return `
+          <line x1="42" y1="12" x2="42" y2="116" stroke="#b7c0b8" stroke-width="1" />
+          <line x1="42" y1="116" x2="628" y2="116" stroke="#b7c0b8" stroke-width="1" />
+          <text x="8" y="16" fill="#687076" font-size="11">1.0</text>
+          <text x="8" y="68" fill="#687076" font-size="11">0.5</text>
+          <text x="14" y="120" fill="#687076" font-size="11">0</text>
+          <text x="308" y="140" fill="#687076" font-size="11">time</text>
+          <text x="5" y="75" fill="#687076" font-size="11" transform="rotate(-90 5 75)">speech prob.</text>
+          ${energyArea ? `<path d="${energyArea}" fill="rgba(15, 118, 110, 0.12)" />` : ""}
+          ${energyPoints ? `<polyline points="${energyPoints}" fill="none" stroke="#0f766e" stroke-width="1.7" vector-effect="non-scaling-stroke" />` : ""}
+          <line x1="42" y1="${yFor(sileroThreshold).toFixed(1)}" x2="628" y2="${yFor(sileroThreshold).toFixed(1)}" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3 4" opacity="0.85" />
+          ${sileroPoints ? `<polyline points="${sileroPoints}" fill="none" stroke="#f59e0b" stroke-width="1.8" vector-effect="non-scaling-stroke" />` : ""}
+        `;
+      }
+
+      function resetVad() {
+        vadHistory = [];
+        lastVadData = null;
+        audioEnergyHistory = [];
+        audioStreamStartAtMs = null;
+        vadStepTimeBaseAtMs = null;
+        els.vadEot.textContent = vadIndicatorLabel({
+          horizonSeconds: vadIndicatorDefault.horizon,
+          className: vadIndicatorDefault.className,
+          value: null
+        });
+        els.vadBars.innerHTML = showVadGrid
+          ? '<span class="placeholder">Waiting for VAD predictions</span>'
+          : "";
+        els.vadFocusValue.textContent = "speech -";
+        els.vadEnergyValue.textContent = "energy -";
+        els.vadFocusState.textContent = "-";
+        els.vadFocusState.className = "vad-focus-state below";
+        resetSilero();
+        renderVadFocusChart();
+      }
+
+      function resetSessionState() {
+        setTranscript("");
+        resetVad();
+        resetPerfPanels();
+        chunkCount = 0;
+        els.chunkCount.textContent = "0";
+        els.elapsed.textContent = "0.0s";
+        startedAt = 0;
+      }
+
+      function updateButtons() {
+        const connected = socket && socket.readyState === WebSocket.OPEN;
+        const connecting = pendingSocket && pendingSocket.readyState === WebSocket.CONNECTING;
+        const recording = Boolean(workletNode);
+        els.connectBtn.disabled = connected || connecting;
+        els.disconnectBtn.disabled = !connected;
+        els.startBtn.disabled = !connected || recording;
+        els.stopBtn.disabled = !recording;
+        els.wsUrl.disabled = connected || connecting;
+        els.instanceSelect.disabled = connected || connecting;
+        els.modelName.disabled = connected || connecting;
+        els.language.disabled = connected || connecting || recording;
+        els.delayProfile.disabled = connected || connecting || recording;
+      }
+
+      function sendEvent(event) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          throw new Error("WebSocket is not connected");
+        }
+        socket.send(JSON.stringify(event));
+      }
+
+      function selectedDelayProfile() {
+        return els.delayProfile.value || config.delayProfile || "480ms";
+      }
+
+      function selectedLanguage() {
+        return els.language.value || config.language || "zh";
+      }
+
+      function arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        const blockSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += blockSize) {
+          binary += String.fromCharCode.apply(
+            null,
+            bytes.subarray(i, i + blockSize)
+          );
+        }
+        return btoa(binary);
+      }
+
+      function openRealtimeSocket(options = {}) {
+        const url = els.wsUrl.value.trim();
+        const model = els.modelName.value.trim();
+        if (!url || !model) {
+          throw new Error("WebSocket URL and model are required");
+        }
+
+        const nextSocket = new WebSocket(url);
+        pendingSocket = nextSocket;
+        let settled = false;
+        setStatus("Connecting", "");
+        updateButtons();
+
+        return new Promise((resolve, reject) => {
+          function fail(error) {
+            if (!settled) {
+              settled = true;
+              reject(error);
+            }
+          }
+
+          nextSocket.addEventListener("open", () => {
+            const previousSocket = socket;
+            socket = nextSocket;
+            pendingSocket = null;
+            setStatus(workletNode ? "Recording" : "Connected", workletNode ? "recording" : "connected");
+            nextSocket.send(JSON.stringify(sessionUpdatePayload()));
+            if (options.startStreaming) {
+              nextSocket.send(
+                JSON.stringify({ type: "input_audio_buffer.commit", final: false })
+              );
+            }
+            if (options.startStreaming) {
+              vadStepTimeBaseAtMs = Date.now();
+            }
+            log("connected");
+            updateButtons();
+            if (previousSocket && previousSocket !== nextSocket) {
+              previousSocket.close(1000, "replaced");
+            }
+            if (!settled) {
+              settled = true;
+              resolve(nextSocket);
+            }
+          });
+
+          nextSocket.addEventListener("message", (event) => {
+            if (socket !== nextSocket && pendingSocket !== nextSocket) {
+              return;
+            }
+            let data;
+            try {
+              data = JSON.parse(event.data);
+            } catch (error) {
+              log(`non-json message: ${event.data}`);
+              return;
+            }
+
+            if (data.type === "session.created") {
+              log(`session ${data.id}`);
+            } else if (data.type === "transcription.delta") {
+              setTranscript(transcriptText + (data.delta || ""));
+            } else if (data.type === "semantic_vad.delta") {
+              renderVad(data);
+            } else if (data.type === "metrics.delta") {
+              handleMetrics(data);
+            } else if (data.type === "transcription.done") {
+              setTranscript(data.text || transcriptText);
+              log("done");
+            } else if (data.type === "error") {
+              log(`error ${data.code || ""} ${data.error || ""}`.trim());
+            } else {
+              log(data.type || event.data);
+            }
+          });
+
+          nextSocket.addEventListener("close", () => {
+            if (pendingSocket === nextSocket) {
+              pendingSocket = null;
+              fail(new Error("WebSocket closed before it was ready"));
+            }
+            if (socket === nextSocket) {
+              socket = null;
+              setStatus("Disconnected", "");
+              stopMic(false).finally(updateButtons);
+              log("disconnected");
+            }
+          });
+
+          nextSocket.addEventListener("error", () => {
+            if (pendingSocket === nextSocket) {
+              pendingSocket = null;
+            }
+            if (socket === nextSocket || !socket) {
+              setStatus("Connection error", "");
+            }
+            log("websocket error");
+            fail(new Error("websocket error"));
+            updateButtons();
+          });
+        });
+      }
+
+      async function connect() {
+        resetSessionState();
+        await openRealtimeSocket();
+      }
+
+      async function disconnect() {
+        await stopMic(true);
+        if (pendingSocket) {
+          pendingSocket.close();
+          pendingSocket = null;
+        }
+        if (socket) {
+          socket.close();
+        }
+      }
+
+      async function startMic() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          log("WebSocket is not connected");
+          return;
+        }
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Microphone access requires localhost or an HTTPS page.");
+        }
+
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+
+        audioContext = new AudioContext();
+        await audioContext.resume();
+        await audioContext.audioWorklet.addModule("./pcm-worklet.js");
+        sourceNode = audioContext.createMediaStreamSource(mediaStream);
+        workletNode = new AudioWorkletNode(audioContext, "pcm16-worklet", {
+          processorOptions: {
+            targetSampleRate,
+            sourceSampleRate: audioContext.sampleRate,
+            chunkSamples: 1600
+          }
+        });
+
+        workletNode.port.onmessage = (event) => {
+          if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          const buffer = event.data;
+          if (chunkCount === 0) {
+            if (audioChunkWatchdog) {
+              window.clearTimeout(audioChunkWatchdog);
+              audioChunkWatchdog = null;
+            }
+            log("Microphone audio is flowing");
+          }
+          noteMicLevel(recordAudioEnergy(buffer));
+          pushSileroAudio(buffer);
+          sendEvent({
+            type: "input_audio_buffer.append",
+            audio: arrayBufferToBase64(buffer)
+          });
+          chunkCount += 1;
+          els.chunkCount.textContent = String(chunkCount);
+        };
+
+        sourceNode.connect(workletNode);
+        workletNode.connect(audioContext.destination);
+        chunkCount = 0;
+        els.chunkCount.textContent = "0";
+        startedAt = performance.now();
+        audioChunkWatchdog = window.setTimeout(() => {
+          audioChunkWatchdog = null;
+          if (workletNode && chunkCount === 0) {
+            log("No microphone audio received; check browser mic permission and input device");
+          }
+        }, 1500);
+        timer = window.setInterval(() => {
+          const elapsed = (performance.now() - startedAt) / 1000;
+          els.elapsed.textContent = `${elapsed.toFixed(1)}s`;
+        }, 100);
+
+        sendEvent({ type: "input_audio_buffer.commit", final: false });
+        vadStepTimeBaseAtMs = Date.now();
+        resetSilero();
+        ensureSilero();
+        setStatus("Recording", "recording");
+        micSilentSinceMs = 0;
+        micSilentWarned = false;
+        els.micLevel.textContent = "-";
+        els.micLevel.className = "value mic-level";
+        log(`microphone ${Math.round(audioContext.sampleRate)}Hz -> 16000Hz`);
+        updateButtons();
+      }
+
+      async function stopMic(sendFinal) {
+        if (audioChunkWatchdog) {
+          window.clearTimeout(audioChunkWatchdog);
+          audioChunkWatchdog = null;
+        }
+        if (timer) {
+          window.clearInterval(timer);
+          timer = null;
+        }
+        if (workletNode) {
+          workletNode.port.onmessage = null;
+          workletNode.disconnect();
+          workletNode = null;
+        }
+        if (sourceNode) {
+          sourceNode.disconnect();
+          sourceNode = null;
+        }
+        if (audioContext) {
+          await audioContext.close();
+          audioContext = null;
+        }
+        if (mediaStream) {
+          for (const track of mediaStream.getTracks()) {
+            track.stop();
+          }
+          mediaStream = null;
+        }
+        if (sendFinal && socket && socket.readyState === WebSocket.OPEN) {
+          sendEvent({ type: "input_audio_buffer.commit", final: true });
+        }
+        if (sendFinal) {
+          vadStepTimeBaseAtMs = null;
+        }
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          setStatus("Connected", "connected");
+        }
+        updateButtons();
+      }
+
+      els.transcript.addEventListener("scroll", () => {
+        // Scrolling to (or back to) the bottom re-pins; scrolling up keeps the position.
+        transcriptStickToBottom = transcriptIsAtBottom();
+      });
+      els.connectBtn.addEventListener("click", () => {
+        connect().catch((error) => log(error.message));
+      });
+      els.disconnectBtn.addEventListener("click", () => {
+        disconnect().catch((error) => log(error.message));
+      });
+      els.startBtn.addEventListener("click", () => {
+        startMic().catch((error) => {
+          log(error.message);
+          stopMic(false).finally(updateButtons);
+        });
+      });
+      els.stopBtn.addEventListener("click", () => {
+        stopMic(true).catch((error) => log(error.message));
+      });
+      els.clearBtn.addEventListener("click", () => {
+        setTranscript("");
+        resetVad();
+        resetPerfPanels();
+        els.log.textContent = "";
+        els.elapsed.textContent = "0.0s";
+        els.chunkCount.textContent = "0";
+      });
+      els.copyBtn.addEventListener("click", () => {
+        navigator.clipboard
+          .writeText(transcriptText)
+          .then(() => log("copied"))
+          .catch((error) => log(error.message));
+      });
+      els.vadHorizonSelect.addEventListener("change", () => {
+        vadHorizonTouched = true;
+        refreshVadIndicatorLabel();
+        renderVadFocusChart();
+      });
+      els.vadClassSelect.addEventListener("change", () => {
+        vadClassTouched = true;
+        refreshVadIndicatorLabel();
+        renderVadFocusChart();
+      });
+      els.vadThreshold.addEventListener("input", renderVadFocusChart);
+      // Semantic VAD and Silero share one convention: 1 = speech, 0 = silence.
+      // The semantic model's c0 means no speech within the horizon (EOT), so we show 1 - P(c0).
+      els.vadClassSelect.title =
+        "c0 = no speech within this horizon (EOT); panel and curve show 1-c0, the speech probability (1=speech, 0=silence)";
+      els.vadHorizonSelect.title =
+        "Semantic VAD horizon in seconds: c0 is the probability of no speech within it";
+      els.vadThreshold.title =
+        "Semantic VAD threshold: speech probability >= threshold counts as speech (same convention as Silero 0.50)";
+      els.sileroThresholdMark.title = `Silero threshold ${sileroThreshold.toFixed(2)} (official default)`;
+      els.sileroThresholdMark.style.left = `${(sileroThreshold * 100).toFixed(1)}%`;
+
+      initInstanceSelect();
+      loadHotwords();
+      els.hotwordsText.addEventListener("input", onHotwordsChanged);
+      els.hotwordBoost.addEventListener("input", onHotwordsChanged);
+      els.wsUrl.value = defaultWsUrl();
+      els.modelName.value =
+        config.modelName || "audio8-asr-infinite";
+      const languages = [
+        ["zh", "Chinese"],
+        ["en", "English"]
+      ];
+      els.language.innerHTML = languages
+        .map(([value, label]) => `<option value="${value}">${label}</option>`)
+        .join("");
+      els.language.value = languages.some(([value]) => value === config.language)
+        ? config.language
+        : "zh";
+      els.delayProfile.innerHTML = delayProfiles
+        .map((profile) => `<option value="${profile}">${profile}</option>`)
+        .join("");
+      els.delayProfile.value = delayProfiles.includes(config.delayProfile)
+        ? config.delayProfile
+        : "480ms";
+      if (!window.isSecureContext) {
+        els.secureNotice.classList.add("visible");
+      }
+      // Probability grid hidden by default (timeline only); AUDIO8_SHOW_VAD_GRID=1 shows it
+      els.vadBars.hidden = !showVadGrid;
+      // Semantic VAD panel hidden by default; AUDIO8_SHOW_VAD_PANEL=1 shows it (code kept)
+      els.vadPanel.hidden = !showVadPanel;
+      resetVad();
+      resetPerfPanels();
+      updateButtons();
+    </script>
+  </body>
+</html>

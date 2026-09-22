@@ -1,0 +1,4 @@
+[vllm.general_plugins]
+audio8_streaming_asr_realtime = audio8_streaming_asr_vllm_plugin:register_audio8_streaming_asr_realtime
+[vllm.endpoint_plugins]
+audio8_realtime_endpoint = audio8_streaming_asr_vllm_plugin:make_audio8_realtime_endpoint_plugin

@@ -1,0 +1,235 @@
+# Audio8 ASR Infinite 容器化部署（部署口径以本文件为准；版本口径见 docker/Dockerfile）。
+#
+# 三个注入开关（缺一不可）：
+#   PYTHONPATH（仓库根 + vllm_serve 目录，后者提供插件 dist-info entry points）
+#   VLLM_PLUGINS=audio8_streaming_asr_realtime,audio8_realtime_endpoint（allowlist）
+#   --scheduler-cls（Audio8RollingScheduler）
+# 使用前必须设置：
+#   AUDIO8_MODEL_DIR=<宿主机上 merged weight_format_version=2 checkpoint 目录>
+# 可选覆盖：
+#   AUDIO8_GPU（默认 0）、AUDIO8_PORT（默认 18191）、AUDIO8_WEB_PORT（默认 8080）、AUDIO8_WEB_HTTPS_PORT（默认 8443）
+#   第二实例（--profile second）：AUDIO8_GPU_2（默认 1）、AUDIO8_PORT_2（默认 18193）
+#   实例选择器：页面自动读 config.js 的 publicVllmPort/publicVllmPort2；HTTPS 页面上
+#   两个实例共用 8443，第二个走 wss://<host>:8443/v1/realtime?instance=2
+#
+# 启动后确认注入生效（三个健康标志，缺一个就是注入不完整）：
+#   1) WARNING ... Using custom scheduler class ...Audio8RollingScheduler
+#   2) INFO ... - audio8_realtime_endpoint -> audio8_streaming_asr_vllm_plugin:make_audio8_realtime_endpoint_plugin
+#   3) Route: /v1/realtime, Endpoint: realtime_endpoint   # 只应有一条（native 已被替换）
+name: audio8-asr-infinite
+
+# 两个实例共用同一份低显存口径：环境与 serve 参数只写一份（下面两个 service 引用）。
+x-audio8-asr-environment: &audio8-asr-environment
+    PYTHONPATH: >-
+      /audio8/repo:/audio8/repo/audio8_asr_infinite/vllm_serve
+    VLLM_PLUGINS: audio8_streaming_asr_realtime,audio8_realtime_endpoint
+    VLLM_USE_FLASHINFER_SAMPLER: "0"
+    # semantic VAD 的概率由 adapter 在 compute_logits 里算出（EngineCore 进程），
+    # 经跨进程文件通道交给 realtime endpoint（API server 进程）：
+    # audio8_asr_infinite/vllm_serve/vllm0271/audio8_vad_channel.py，默认目录 /tmp，
+    # 不写仓库（仓库是 :ro 挂载）。纯转写 checkpoint 不声明
+    # semantic_vad_horizons_seconds，这条通道对它完全惰性。
+    AUDIO8_VAD_CHANNEL_DIR: /tmp/audio8_vad
+    # 语义 VAD 指示读数的默认 horizon（前端默认按 1.0s 的 c0 显示，这里让服务端
+    # selected_eot_* 兜底值也对齐 1.0s）
+    AUDIO8_VAD_EOT_HORIZON_SECONDS: "1.0"
+    # 24 小时连续推理口径：会话状态不按空闲回收（默认 120s）。_prune_idle_session_states
+    # 本来就跳过"最近使用"的那条，活跃会话不会被删；置 0 是为了长跑时不再存在任何
+    # "到点回收"。状态条数上限（AUDIO8_REALTIME_SESSION_STATE_CAP，默认 4）保留，
+    # 用来兜住反复重连时的驻留，不影响正在推理的会话。
+    AUDIO8_REALTIME_SESSION_STATE_IDLE_SECONDS: "0"
+    # 滚动窗留余量：音频塔只支持 max_position_embeddings=1500 = 375 行 x 4
+    # （见 audio8_rolling_scheduler.py 的 _audio8_realtime_compute_session_trim 注释），
+    # 行数超过 375 会给音频 RoPE 喂超范围位置、把那几行的音频特征打坏，模型随后只出
+    # pad（表现为「转写突然不再更新」）。而 trim 是每个 scheduler step 判一次，一个 step
+    # 会一次进一整个音频窗，账本峰值必然越过 375——越界多少取决于音频块与 step 边界的
+    # 对齐，所以故障是间歇的。这里把窗口从 375 降到 360（28.8s，只少 0.6s 上下文），
+    # 给 step 越界留 15 行余量，任何一步都摸不到 1500 上限。
+    AUDIO8_REALTIME_ROLLING_CONTEXT_TOKENS: "360"
+    # 诊断：每 25 个生成步（约 2 秒）在 API server 日志里打一条
+    # AUDIO8_REALTIME_DELTA（delta_len / 累计 text_len / 文本尾部），用来判定
+    # 「前端停更」是模型不再出文本还是渲染侧。0=关闭；长跑正常后置回 0 即可。
+    AUDIO8_REALTIME_DELTA_LOG_EVERY: "25"
+    # 诊断：每 25 个流式窗口打一条 AUDIO8_REALTIME_SESSION_UPDATE
+    # （fed_tokens / kept_output_tokens / mm 特征数与账本长度），用于确认
+    # 「转写文本是否被重复折回上下文」。
+    AUDIO8_REALTIME_UPDATE_LOG_EVERY: "25"
+    # 诊断：每 20 个上行音频块（约 2 秒）打一条 AUDIO8_REALTIME_AUDIO
+    # （rms / peak），用来确认「模型不再出文本」时输入是否还有语音。
+    AUDIO8_REALTIME_AUDIO_LOG_EVERY: "20"
+    # 诊断（默认关闭）：把每个会话收到的上行音频按 16 kHz 单声道 s16le 原始 PCM
+    # 落盘，用于离线复现「转写停更/复读」。会记录用户音频，排障时才打开。
+    AUDIO8_REALTIME_DUMP_AUDIO: "${AUDIO8_REALTIME_DUMP_AUDIO:-}"
+    # 镜像版 vllm 默认日志配置只配置 "vllm" 命名空间，adapter（audio8_asr_infinite.*）的
+    # INFO 健康标志（tower eager / rolling trim 日志）会被吞掉，这里补一个
+    # audio8_asr_infinite logger（启动健康标志因此可见）
+    VLLM_LOGGING_CONFIG_PATH: /audio8/repo/docker/audio8_logging_config.json
+    HF_HOME: /tmp/hf_home
+    XDG_CACHE_HOME: /tmp/xdg_cache
+    TMPDIR: /tmp
+
+  # 镜像 ENTRYPOINT 是 ["vllm","serve"]，command 即 serve 参数（模型路径开头）
+  #
+  # 显存口径：只留「一个连接 / 30 s 滚动窗」的量，其余一律不给。
+  #   * --max-model-len 512：单连接账本上限。30 s 滚动窗 375 tokens
+  #     (AUDIO8_REALTIME_ROLLING_CONTEXT_TOKENS 默认 375) + trim 间隔 38 tokens
+  #     (AUDIO8_REALTIME_ROLLING_TRIM_INTERVAL_MS 3000，每 3 s 批量裁一次) +
+  #     稳定前缀 16 tokens ≈ 429 tokens，512 留了余量；trim 后 vLLM 直接释放被裁段的
+  #     paged KV，所以窗口外的历史不驻留。
+  #   * --kv-cache-memory-bytes 按上面 512 tokens 精确给（约 1.07 MB/token），
+  #     不再用 gpu-memory-utilization 按整卡比例分（那样会白占几 GiB）。
+  #   * --max-num-batched-tokens 512：必须 >= trim 后要重算的整段 prefill（实测约 337
+  #     tokens）。压到 64/128 能再省约 2 GiB，但重算会被切成多段，而这个实时模型的分段
+  #     账本（_pending_mm_items，假设「一次引擎步 = 一个音频窗」）在分块 prefill 下有错位
+  #     风险，24 小时连续推理优先，所以取 512 让整段重算落在同一批里。
+  # 注意：这些注释是 YAML 注释，不能写进下面的 command 折叠块里（会被当成 vLLM 参数）。
+x-audio8-asr-command: &audio8-asr-command >
+  /audio8/model
+  --host 0.0.0.0
+  --port 18190
+  --served-model-name audio8-asr-infinite
+  --trust-remote-code
+  --enforce-eager
+  --max-model-len 512
+  --max-num-seqs 1
+  --kv-cache-memory-bytes 650000000
+  --max-num-batched-tokens 512
+  --gpu-memory-utilization 0.25
+  --scheduler-cls audio8_asr_infinite.vllm_serve.vllm0271.audio8_rolling_scheduler.Audio8RollingScheduler
+
+services:
+  audio8-asr-infinite:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: audio8-asr-infinite:0.27.1-cu129
+    container_name: audio8-asr-infinite
+    restart: unless-stopped
+    gpus: all
+    shm_size: "8gb"
+    # 仓库代码与模型 checkpoint 都以只读方式挂进容器
+    volumes:
+      - ..:/audio8/repo:ro
+      - ${AUDIO8_MODEL_DIR:?set AUDIO8_MODEL_DIR to your checkpoint directory}:/audio8/model:ro
+    working_dir: /audio8/repo
+    environment:
+      <<: *audio8-asr-environment
+      CUDA_VISIBLE_DEVICES: "${AUDIO8_GPU:-0}"
+    ports:
+      - "${AUDIO8_PORT:-18191}:18190"
+    command: *audio8-asr-command
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:18190/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 420s
+      retries: 5
+
+  # 第二个 vLLM 实例：同一套低显存口径（同一份 anchor），只换 GPU 与端口。
+  # 默认不启动；要用实例选择器就：
+  #   docker compose --profile second up -d
+  # 起后页面（8080/8443）出现 Instance 下拉；8443 上第二个实例走 ?instance=2，
+  # 由 web_tls_proxy.py 转发到 AUDIO8_BACKEND_WS_2。
+  # 单实例部署：不启用该 profile 即可；如需彻底隐藏下拉，把 AUDIO8_PORT_2 置空。
+  audio8-asr-infinite-2:
+    profiles: ["second"]
+    image: audio8-asr-infinite:0.27.1-cu129
+    container_name: audio8-asr-infinite-2
+    restart: unless-stopped
+    gpus: all
+    shm_size: "8gb"
+    volumes:
+      - ..:/audio8/repo:ro
+      - ${AUDIO8_MODEL_DIR:?set AUDIO8_MODEL_DIR to your checkpoint directory}:/audio8/model:ro
+    working_dir: /audio8/repo
+    environment:
+      <<: *audio8-asr-environment
+      CUDA_VISIBLE_DEVICES: "${AUDIO8_GPU_2:-1}"
+    ports:
+      - "${AUDIO8_PORT_2:-18193}:18190"
+    command: *audio8-asr-command
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:18190/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 420s
+      retries: 5
+
+  # Web 客户端（已烘焙在镜像 /opt/audio8_client）：复制到 /srv 并按部署端口改写
+  # config.js 的 publicVllmPort（页面用它拼 ws://<本页host>:<publicVllmPort>/v1/realtime，
+  # 浏览器直连 vLLM，不经本服务转发），python http.server 提供静态文件。
+  web:
+    image: audio8-asr-infinite:0.27.1-cu129
+    container_name: audio8-asr-infinite-web
+    restart: unless-stopped
+    # 整段脚本作为 bash -c 的单个参数（compose 会把字符串 command 按空白拆成 argv，
+    # 所以脚本必须放在 entrypoint 的 list 里）
+    entrypoint:
+      - /bin/bash
+      - -c
+      - >
+        set -e;
+        rm -rf /srv/audio8_client && mkdir -p /srv/audio8_client
+        && cp -r /opt/audio8_client/. /srv/audio8_client/
+        && sed -i "s/publicVllmPort: \"[0-9]*\"/publicVllmPort: \"${AUDIO8_PORT:-18191}\"/" /srv/audio8_client/config.js
+        && sed -i "s/publicVllmPort2: \"[^\"]*\"/publicVllmPort2: \"${AUDIO8_PORT_2:-18193}\"/" /srv/audio8_client/config.js
+        && sed -i "s/vadEnabled: \"[^\"]*\"/vadEnabled: \"${AUDIO8_VAD_ENABLED:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/vadIndicator: \"[^\"]*\"/vadIndicator: \"${AUDIO8_VAD_INDICATOR:-1.0:0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/showVadPanel: \"[^\"]*\"/showVadPanel: \"${AUDIO8_SHOW_VAD_PANEL:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/showVadGrid: \"[^\"]*\"/showVadGrid: \"${AUDIO8_SHOW_VAD_GRID:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/showVadClassValues: \"[^\"]*\"/showVadClassValues: \"${AUDIO8_SHOW_VAD_CLASS_VALUES:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/sileroVadThreshold: \"[^\"]*\"/sileroVadThreshold: \"${AUDIO8_SILERO_VAD_THRESHOLD:-0.5}\"/" /srv/audio8_client/config.js
+        && exec /usr/bin/python3.12 -m http.server 8080 --bind 0.0.0.0 --directory /srv/audio8_client
+    ports:
+      - "${AUDIO8_WEB_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/index.html"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # HTTPS 单端口入口（供无法用 localhost 的浏览器启用麦克风）：
+  # https://<host>:${AUDIO8_WEB_HTTPS_PORT:-8443}/ 提供静态页面，/v1/realtime 以 wss
+  # 反代到 asr 服务（浏览器只需对这个端口接受一次自签证书）。
+  # 证书在宿主 ./certs/（server.crt/server.key）——先用 docker/certs/README.md 的
+  # 命令自签生成（SAN 含部署主机 IP/DNS），再启动本服务。
+  web-https:
+    image: audio8-asr-infinite:0.27.1-cu129
+    container_name: audio8-asr-infinite-web-https
+    restart: unless-stopped
+    depends_on:
+      audio8-asr-infinite:
+        condition: service_healthy
+    entrypoint:
+      - /bin/bash
+      - -c
+      - >
+        set -e;
+        rm -rf /srv/audio8_client && mkdir -p /srv/audio8_client
+        && cp -r /opt/audio8_client/. /srv/audio8_client/
+        && sed -i "s/publicVllmPort: \"[0-9]*\"/publicVllmPort: \"${AUDIO8_WEB_HTTPS_PORT:-8443}\"/" /srv/audio8_client/config.js
+        && sed -i "s/publicVllmPort2: \"[^\"]*\"/publicVllmPort2: \"${AUDIO8_PORT_2:-18193}\"/" /srv/audio8_client/config.js
+        && sed -i "s/vadEnabled: \"[^\"]*\"/vadEnabled: \"${AUDIO8_VAD_ENABLED:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/vadIndicator: \"[^\"]*\"/vadIndicator: \"${AUDIO8_VAD_INDICATOR:-1.0:0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/showVadPanel: \"[^\"]*\"/showVadPanel: \"${AUDIO8_SHOW_VAD_PANEL:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/showVadGrid: \"[^\"]*\"/showVadGrid: \"${AUDIO8_SHOW_VAD_GRID:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/showVadClassValues: \"[^\"]*\"/showVadClassValues: \"${AUDIO8_SHOW_VAD_CLASS_VALUES:-0}\"/" /srv/audio8_client/config.js
+        && sed -i "s/sileroVadThreshold: \"[^\"]*\"/sileroVadThreshold: \"${AUDIO8_SILERO_VAD_THRESHOLD:-0.5}\"/" /srv/audio8_client/config.js
+        && exec /usr/bin/python3.12 /opt/web_tls_proxy.py
+    environment:
+      AUDIO8_BACKEND_WS: ws://audio8-asr-infinite:18190/v1/realtime
+      # 第二个实例的后端；同一个 8443 上按 ?instance=2 选择。未启用 second profile
+      # （或地址不通）时代理会记录告警并回落到第一个实例，不影响默认路径。
+      AUDIO8_BACKEND_WS_2: "${AUDIO8_BACKEND_WS_2:-ws://audio8-asr-infinite-2:18190/v1/realtime}"
+      AUDIO8_PUBLIC_PORT: "${AUDIO8_WEB_HTTPS_PORT:-8443}"
+    volumes:
+      - ./certs:/certs:ro
+    ports:
+      - "${AUDIO8_WEB_HTTPS_PORT:-8443}:8443"
+    healthcheck:
+      test: ["CMD", "curl", "-skf", "https://127.0.0.1:8443/index.html"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
