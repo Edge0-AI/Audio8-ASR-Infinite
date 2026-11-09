@@ -114,3 +114,12 @@ python -m audio8_asr_infinite.examples.torch_streaming_decode \
     --checkpoint /path/to/checkpoint \
     --audio sample.wav --language zh --transcription-delay-ms 480
 ```
+
+## Licence
+
+Code and our own contributions are Apache-2.0. The decoder and LM head were
+initialised from [Qwen/Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct),
+which is licensed under the Qwen Research License Agreement; the weights follow
+that licence. See [`NOTICE`](NOTICE) and [`LICENSE-QWEN-RESEARCH`](LICENSE-QWEN-RESEARCH).
+
+Built with Qwen.
